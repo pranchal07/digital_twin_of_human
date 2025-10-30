@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db import models
 from datetime import datetime, timedelta
+from drf_spectacular.utils import extend_schema
 
 from .models import VitalRecord, LifestyleRecord, AcademicMetric, Goal, AchievementBadge, ExportRequest
 from .serializers import (
@@ -21,6 +22,8 @@ from .serializers import (
 
 User = get_user_model()
 
+
+@extend_schema(request=UserRegistrationSerializer, responses=UserProfileSerializer)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def signup(request):
@@ -43,6 +46,8 @@ def signup(request):
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+@extend_schema(request=None, responses=UserProfileSerializer)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login(request):
@@ -85,12 +90,16 @@ def login(request):
 
     return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
+
+@extend_schema(responses=UserProfileSerializer)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def profile(request):
     serializer = UserProfileSerializer(request.user)
     return Response(serializer.data)
 
+
+@extend_schema(request=UserUpdateSerializer, responses=UserProfileSerializer)
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def update_profile(request):
@@ -100,9 +109,11 @@ def update_profile(request):
         return Response(UserProfileSerializer(request.user).data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class VitalRecordViewSet(viewsets.ModelViewSet):
     serializer_class = VitalRecordSerializer
     permission_classes = [IsAuthenticated]
+    queryset = VitalRecord.objects.all()   # ✅ required for schema
 
     def get_queryset(self):
         queryset = VitalRecord.objects.filter(user=self.request.user)
@@ -130,9 +141,11 @@ class VitalRecordViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         return Response({'message': 'No vital records found'}, status=status.HTTP_404_NOT_FOUND)
 
+
 class LifestyleRecordViewSet(viewsets.ModelViewSet):
     serializer_class = LifestyleRecordSerializer
     permission_classes = [IsAuthenticated]
+    queryset = LifestyleRecord.objects.all()
 
     def get_queryset(self):
         queryset = LifestyleRecord.objects.filter(user=self.request.user)
@@ -152,9 +165,11 @@ class LifestyleRecordViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+
 class AcademicMetricViewSet(viewsets.ModelViewSet):
     serializer_class = AcademicMetricSerializer
     permission_classes = [IsAuthenticated]
+    queryset = AcademicMetric.objects.all()
 
     def get_queryset(self):
         queryset = AcademicMetric.objects.filter(user=self.request.user)
@@ -174,9 +189,11 @@ class AcademicMetricViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+
 class GoalViewSet(viewsets.ModelViewSet):
     serializer_class = GoalSerializer
     permission_classes = [IsAuthenticated]
+    queryset = Goal.objects.all()
 
     def get_queryset(self):
         queryset = Goal.objects.filter(user=self.request.user)
@@ -202,17 +219,21 @@ class GoalViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(active_goals, many=True)
         return Response(serializer.data)
 
+
 class AchievementBadgeViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AchievementBadgeSerializer
     permission_classes = [IsAuthenticated]
+    queryset = AchievementBadge.objects.all()
 
     def get_queryset(self):
         return AchievementBadge.objects.filter(user=self.request.user)
+
 
 class ExportRequestViewSet(viewsets.ModelViewSet):
     serializer_class = ExportRequestSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post']
+    queryset = ExportRequest.objects.all()
 
     def get_queryset(self):
         return ExportRequest.objects.filter(user=self.request.user)
@@ -232,10 +253,12 @@ class ExportRequestViewSet(viewsets.ModelViewSet):
             export_request.completed_at = timezone.now()
             export_request.file_url = f'/media/exports/{export_request.user.id}/{export_request.format}/export.{export_request.format}'
             export_request.save()
-        except Exception as e:
+        except Exception:
             export_request.status = 'failed'
             export_request.save()
 
+
+@extend_schema(responses=dict)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def analytics_summary(request):

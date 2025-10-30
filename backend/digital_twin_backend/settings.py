@@ -7,7 +7,7 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-key-change-in-production')
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
 INSTALLED_APPS = [
@@ -58,14 +58,7 @@ WSGI_APPLICATION = 'digital_twin_backend.wsgi.application'
 
 # Database - PostgreSQL
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='digital_twin_db'),
-        'USER': config('DB_USER', default='postgres'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
-    }
+    'default': dj_database_url.config(default=os.getenv("postgresql://digital_twin_db_q7hh_user:OjPcrX7SGMTIPRQQol1dOcpwCR9Af0xi@dpg-d41gshn5r7bs739fpfp0-a/digital_twin_db_q7hh"))
 }
 
 AUTH_USER_MODEL = 'api.User'

@@ -60,8 +60,9 @@ WSGI_APPLICATION = 'digital_twin_backend.wsgi.application'
 
 # Database - PostgreSQL
 DATABASES = {
-    'default': dj_database_url.config(env='DATABASE_URL')
+    'default': dj_database_url.config()
 }
+
 
 
 AUTH_USER_MODEL = 'api.User'

@@ -60,7 +60,7 @@ WSGI_APPLICATION = 'digital_twin_backend.wsgi.application'
 
 # Database - PostgreSQL
 DATABASES = {
-    'default': dj_database_url.config(default="postgresql://digital_twin_db_q7hh_user:OjPcrX7SGMTIPRQQol1dOcpwCR9Af0xi@dpg-d41gshn5r7bs739fpfp0-a/digital_twin_db_q7hh")
+    'default': dj_database_url.config(env='DATABASE_URL')
 }
 
 

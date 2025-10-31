@@ -1,7 +1,7 @@
 // Digital Twin - Backend API Configuration
 
 const API_CONFIG = {
-    BASE_URL: 'https://digital-twin-of-human-1.onrender.com',
+    BASE_URL: 'https://digital-twin-of-human-1.onrender.com/api',
     ENDPOINTS: {
         SIGNUP: '/auth/signup/',
         LOGIN: '/auth/login/',

@@ -1,5 +1,4 @@
-// Digital Twin - Form Management (UPDATED)
-
+// Digital Twin - Form Management
 class FormManager {
     constructor() {
         this.currentStep = 1;
@@ -9,12 +8,6 @@ class FormManager {
     }
 
     init() {
-        // Protect page - require authentication
-        if (!window.DigitalTwinAPI || !window.DigitalTwinAPI.isAuthenticated()) {
-            window.location.href = 'login.html';
-            return;
-        }
-
         this.setupEventListeners();
         this.setupValidation();
         this.updateProgress();
@@ -41,15 +34,20 @@ class FormManager {
             });
         }
 
+        // Range input updates
         this.setupRangeInputs();
+
+        // Real-time validation
         this.setupRealTimeValidation();
     }
 
     setupRangeInputs() {
         const ranges = ['stressLevel', 'dietQuality', 'focusLevel'];
+
         ranges.forEach(id => {
             const input = document.getElementById(id);
-            const display = document.getElementById(id + 'Display');
+            const display = document.getElementById(id.replace('Level', 'Value').replace('Quality', 'Value').replace('focus', 'focus'));
+
             if (input && display) {
                 input.addEventListener('input', (e) => {
                     display.textContent = e.target.value;
@@ -59,31 +57,90 @@ class FormManager {
     }
 
     setupRealTimeValidation() {
-        const inputs = document.querySelectorAll('input[required]');
+        const inputs = document.querySelectorAll('.form-step input');
+
         inputs.forEach(input => {
-            input.addEventListener('blur', () => {
-                this.validateField(input);
-            });
+            input.addEventListener('blur', () => this.validateField(input));
+            input.addEventListener('input', () => this.clearErrors(input));
         });
     }
 
-    validateField(field) {
-        if (field.hasAttribute('required') && !field.value) {
-            field.classList.add('invalid');
+    validateField(input) {
+        const value = input.value.trim();
+        const min = parseFloat(input.min);
+        const max = parseFloat(input.max);
+        const isRequired = input.hasAttribute('required');
+
+        this.clearErrors(input);
+
+        if (isRequired && !value) {
+            this.showError(input, 'This field is required');
             return false;
         }
-        field.classList.remove('invalid');
+
+        if (value && input.type === 'number') {
+            const num = parseFloat(value);
+            if (isNaN(num)) {
+                this.showError(input, 'Please enter a valid number');
+                return false;
+            }
+
+            if (min && num < min) {
+                this.showError(input, `Value must be at least ${min}`);
+                return false;
+            }
+
+            if (max && num > max) {
+                this.showError(input, `Value must be no more than ${max}`);
+                return false;
+            }
+        }
+
+        this.showSuccess(input);
         return true;
     }
 
-    validateStep(step) {
-        const stepElement = document.querySelector(`.step-content[data-step="${step}"]`);
-        if (!stepElement) return true;
+    showError(input, message) {
+        const formGroup = input.closest('.form-group');
+        formGroup.classList.add('error');
+        formGroup.classList.remove('success');
 
-        const requiredInputs = stepElement.querySelectorAll('input[required]');
+        let errorElement = formGroup.querySelector('.error-message');
+        if (!errorElement) {
+            errorElement = document.createElement('span');
+            errorElement.className = 'error-message';
+            formGroup.appendChild(errorElement);
+        }
+        errorElement.textContent = message;
+    }
+
+    showSuccess(input) {
+        const formGroup = input.closest('.form-group');
+        formGroup.classList.add('success');
+        formGroup.classList.remove('error');
+
+        const errorElement = formGroup.querySelector('.error-message');
+        if (errorElement) {
+            errorElement.remove();
+        }
+    }
+
+    clearErrors(input) {
+        const formGroup = input.closest('.form-group');
+        formGroup.classList.remove('error', 'success');
+
+        const errorElement = formGroup.querySelector('.error-message');
+        if (errorElement) {
+            errorElement.remove();
+        }
+    }
+
+    validateCurrentStep() {
+        const currentStepElement = document.querySelector(`.form-step[data-step="${this.currentStep}"]`);
+        const inputs = currentStepElement.querySelectorAll('input[required]');
         let isValid = true;
 
-        requiredInputs.forEach(input => {
+        inputs.forEach(input => {
             if (!this.validateField(input)) {
                 isValid = false;
             }
@@ -92,323 +149,334 @@ class FormManager {
         return isValid;
     }
 
+    collectStepData() {
+        const currentStepElement = document.querySelector(`.form-step[data-step="${this.currentStep}"]`);
+        const inputs = currentStepElement.querySelectorAll('input, select');
+
+        inputs.forEach(input => {
+            let value = input.value;
+
+            // Convert to appropriate type
+            if (input.type === 'number' || input.type === 'range') {
+                value = parseFloat(value);
+            }
+
+            this.formData[input.id] = value;
+        });
+    }
+
     nextStep() {
-        if (!this.validateStep(this.currentStep)) {
-            this.showNotification('Please fill in all required fields', 'error');
+        if (!this.validateCurrentStep()) {
+            DigitalTwinApp.showToast('Please fill in all required fields correctly', 'error');
             return;
         }
 
-        this.collectStepData(this.currentStep);
+        this.collectStepData();
 
         if (this.currentStep < this.totalSteps) {
             this.currentStep++;
-            this.updateStepDisplay();
+            this.showStep(this.currentStep);
             this.updateProgress();
+            this.updateNavigation();
         }
     }
 
     prevStep() {
         if (this.currentStep > 1) {
             this.currentStep--;
-            this.updateStepDisplay();
+            this.showStep(this.currentStep);
             this.updateProgress();
+            this.updateNavigation();
         }
     }
 
-    updateStepDisplay() {
-        const steps = document.querySelectorAll('.step-content');
-        steps.forEach((step, index) => {
+    showStep(stepNumber) {
+        // Hide all steps
+        document.querySelectorAll('.form-step').forEach(step => {
             step.classList.remove('active');
-            if (index + 1 === this.currentStep) {
-                step.classList.add('active');
-            }
         });
 
+        // Show current step
+        const currentStep = document.querySelector(`.form-step[data-step="${stepNumber}"]`);
+        if (currentStep) {
+            currentStep.classList.add('active');
+        }
+
+        // Update step indicators
+        document.querySelectorAll('.step').forEach((step, index) => {
+            step.classList.remove('active', 'completed');
+
+            if (index + 1 === stepNumber) {
+                step.classList.add('active');
+            } else if (index + 1 < stepNumber) {
+                step.classList.add('completed');
+            }
+        });
+    }
+
+    updateProgress() {
+        const progressFill = document.getElementById('progressFill');
+        if (progressFill) {
+            const progress = (this.currentStep / this.totalSteps) * 100;
+            progressFill.style.width = `${progress}%`;
+        }
+    }
+
+    updateNavigation() {
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
         const submitBtn = document.getElementById('submitBtn');
 
         if (prevBtn) {
-            prevBtn.style.display = this.currentStep === 1 ? 'none' : 'inline-block';
+            prevBtn.style.display = this.currentStep === 1 ? 'none' : 'inline-flex';
         }
 
-        if (this.currentStep === this.totalSteps) {
-            if (nextBtn) nextBtn.style.display = 'none';
-            if (submitBtn) submitBtn.style.display = 'inline-block';
-        } else {
-            if (nextBtn) nextBtn.style.display = 'inline-block';
-            if (submitBtn) submitBtn.style.display = 'none';
-        }
-    }
-
-    updateProgress() {
-        const progressBar = document.querySelector('.progress-fill');
-        const progressText = document.querySelector('.progress-text');
-        const stepIndicators = document.querySelectorAll('.step-indicator');
-
-        const progress = (this.currentStep / this.totalSteps) * 100;
-
-        if (progressBar) {
-            progressBar.style.width = progress + '%';
-        }
-
-        if (progressText) {
-            progressText.textContent = `Step ${this.currentStep} of ${this.totalSteps}`;
-        }
-
-        stepIndicators.forEach((indicator, index) => {
-            if (index + 1 < this.currentStep) {
-                indicator.classList.add('completed');
-                indicator.classList.remove('active');
-            } else if (index + 1 === this.currentStep) {
-                indicator.classList.add('active');
-                indicator.classList.remove('completed');
+        if (nextBtn && submitBtn) {
+            if (this.currentStep === this.totalSteps) {
+                nextBtn.style.display = 'none';
+                submitBtn.style.display = 'inline-flex';
             } else {
-                indicator.classList.remove('active', 'completed');
+                nextBtn.style.display = 'inline-flex';
+                submitBtn.style.display = 'none';
             }
-        });
-    }
-
-    collectStepData(step) {
-        const stepElement = document.querySelector(`.step-content[data-step="${step}"]`);
-        if (!stepElement) return;
-
-        const inputs = stepElement.querySelectorAll('input');
-        inputs.forEach(input => {
-            this.formData[input.name || input.id] = input.value;
-        });
+        }
     }
 
     async submitForm() {
-        if (!this.validateStep(this.currentStep)) {
-            this.showNotification('Please fill in all required fields', 'error');
+        if (!this.validateCurrentStep()) {
+            DigitalTwinApp.showToast('Please fill in all required fields correctly', 'error');
             return;
         }
 
-        this.collectStepData(this.currentStep);
-
-        // Show loading state
-        const submitBtn = document.getElementById('submitBtn');
-        const originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Submitting...';
-        submitBtn.disabled = true;
+        this.collectStepData();
 
         try {
-            // Prepare data for API
-            const vitalsData = {
-                heart_rate: parseInt(this.formData.heartRate) || 0,
-                blood_pressure_systolic: parseInt(this.formData.bpSystolic) || 0,
-                blood_pressure_diastolic: parseInt(this.formData.bpDiastolic) || 0,
-                temperature: parseFloat(this.formData.temperature) || 0,
-                oxygen_saturation: parseInt(this.formData.spo2) || 0
-            };
+            // Show loading state
+            const submitBtn = document.getElementById('submitBtn');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            submitBtn.disabled = true;
 
-            const lifestyleData = {
-                sleep_hours: parseFloat(this.formData.sleepHours) || 0,
-                stress_level: parseInt(this.formData.stressLevel) || 5,
-                diet_quality_score: parseInt(this.formData.dietQuality) || 5,
-                water_intake: parseInt(this.formData.waterIntake) || 0,
-                physical_activity_minutes: parseInt(this.formData.physicalActivity) * 60 || 0
-            };
+            // Save data
+            await this.saveHealthData();
 
-            const academicData = {
-                study_hours: parseFloat(this.formData.studyHours) || 0,
-                attendance_percentage: parseFloat(this.formData.attendance) || 0,
-                focus_level: parseInt(this.formData.focusLevel) || 5,
-                assignment_completion_rate: parseFloat(this.formData.assignmentsCompleted) || 0
-            };
+            // Generate predictions
+            await this.generatePredictions();
 
-            // Submit to backend
-            const result = await window.DigitalTwinAPI.submitHealthData({
-                vitals: vitalsData,
-                lifestyle: lifestyleData,
-                academic: academicData
-            });
-
-            console.log('Data submitted successfully:', result);
-
-            // Show success message
-            this.showNotification('Data saved successfully! You can enter more data or view dashboard.', 'success');
-
-            // Reset form for new entry
-            this.resetForm();
-
-            // Add action buttons
-            this.showActionButtons();
+            // Show success
+            this.showSuccess();
 
         } catch (error) {
-            console.error('Submission error:', error);
-            this.showNotification('Error saving data: ' + error.message, 'error');
+            console.error('Error submitting form:', error);
+            DigitalTwinApp.showToast('Error saving data. Please try again.', 'error');
 
-            submitBtn.textContent = originalText;
+            // Reset button
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerHTML = '<i class="fas fa-check"></i> Complete Entry';
             submitBtn.disabled = false;
+        }
+    }
+
+    async saveHealthData() {
+        // Simulate API call delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Save to localStorage
+        const existingData = JSON.parse(localStorage.getItem('healthData') || '[]');
+        const newEntry = {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            vitals: {
+                heartRate: this.formData.heartRate,
+                bpSystolic: this.formData.bpSystolic,
+                bpDiastolic: this.formData.bpDiastolic,
+                temperature: this.formData.temperature,
+                spo2: this.formData.spo2
+            },
+            lifestyle: {
+                sleepHours: this.formData.sleepHours,
+                stressLevel: this.formData.stressLevel,
+                dietQuality: this.formData.dietQuality,
+                waterIntake: this.formData.waterIntake,
+                physicalActivity: this.formData.physicalActivity
+            },
+            academic: {
+                studyHours: this.formData.studyHours,
+                attendance: this.formData.attendance,
+                assignmentsCompleted: this.formData.assignmentsCompleted,
+                focusLevel: this.formData.focusLevel
+            }
+        };
+
+        existingData.push(newEntry);
+        localStorage.setItem('healthData', JSON.stringify(existingData));
+
+        // Update user stats
+        this.updateUserStats();
+    }
+
+    updateUserStats() {
+        const stats = JSON.parse(localStorage.getItem('userStats') || '{}');
+        stats.totalEntries = (stats.totalEntries || 0) + 1;
+        stats.lastEntry = new Date().toISOString();
+        stats.currentStreak = this.calculateStreak();
+
+        localStorage.setItem('userStats', JSON.stringify(stats));
+    }
+
+    calculateStreak() {
+        const data = JSON.parse(localStorage.getItem('healthData') || '[]');
+        if (data.length === 0) return 1;
+
+        let streak = 1;
+        const today = new Date().toDateString();
+
+        // Check if there's an entry for today
+        const hasToday = data.some(entry => 
+            new Date(entry.timestamp).toDateString() === today
+        );
+
+        if (!hasToday) return 1;
+
+        // Count consecutive days
+        for (let i = 1; i < 30; i++) {
+            const checkDate = new Date();
+            checkDate.setDate(checkDate.getDate() - i);
+
+            const hasEntry = data.some(entry => 
+                new Date(entry.timestamp).toDateString() === checkDate.toDateString()
+            );
+
+            if (hasEntry) {
+                streak++;
+            } else {
+                break;
+            }
+        }
+
+        return streak;
+    }
+
+    async generatePredictions() {
+        // Use ML predictions if available
+        if (window.MLPredictor) {
+            const prediction = window.MLPredictor.generatePrediction(this.formData);
+
+            const predictions = JSON.parse(localStorage.getItem('predictions') || '[]');
+            predictions.push({
+                id: Date.now(),
+                timestamp: new Date().toISOString(),
+                ...prediction
+            });
+
+            localStorage.setItem('predictions', JSON.stringify(predictions));
+        }
+    }
+
+    showSuccess() {
+        // Hide form steps
+        document.querySelectorAll('.form-step').forEach(step => {
+            step.style.display = 'none';
+        });
+
+        // Hide navigation
+        const navigation = document.querySelector('.form-navigation');
+        if (navigation) {
+            navigation.style.display = 'none';
+        }
+
+        // Show success message
+        const successDiv = document.createElement('div');
+        successDiv.className = 'form-success active';
+        successDiv.innerHTML = `
+            <div class="success-icon">
+                <i class="fas fa-check"></i>
+            </div>
+            <h3>Data Saved Successfully!</h3>
+            <p>Your health data has been recorded and analyzed. View your personalized insights on the dashboard.</p>
+            <div class="success-actions">
+                <a href="dashboard.html" class="btn btn-primary">
+                    <i class="fas fa-chart-line"></i> View Dashboard
+                </a>
+                <button class="btn btn-secondary" onclick="location.reload()">
+                    <i class="fas fa-plus"></i> Add More Data
+                </button>
+            </div>
+        `;
+
+        const formContainer = document.querySelector('.form-container');
+        if (formContainer) {
+            formContainer.appendChild(successDiv);
+        }
+
+        // Confetti animation
+        this.showConfetti();
+
+        // Auto redirect after 5 seconds
+        setTimeout(() => {
+            window.location.href = 'dashboard.html';
+        }, 5000);
+    }
+
+    showConfetti() {
+        // Simple confetti effect
+        const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57'];
+
+        for (let i = 0; i < 50; i++) {
+            setTimeout(() => {
+                const confetti = document.createElement('div');
+                confetti.style.position = 'fixed';
+                confetti.style.left = Math.random() * 100 + 'vw';
+                confetti.style.top = '-10px';
+                confetti.style.width = '10px';
+                confetti.style.height = '10px';
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.zIndex = '10000';
+                confetti.style.pointerEvents = 'none';
+                confetti.style.borderRadius = '50%';
+
+                document.body.appendChild(confetti);
+
+                const animation = confetti.animate([
+                    { transform: 'translateY(0) rotateZ(0deg)', opacity: 1 },
+                    { transform: `translateY(100vh) rotateZ(360deg)`, opacity: 0 }
+                ], {
+                    duration: 3000,
+                    easing: 'cubic-bezier(0, 0, 0.2, 1)'
+                });
+
+                animation.onfinish = () => confetti.remove();
+            }, i * 100);
         }
     }
 
     resetForm() {
-        // Reset to step 1
         this.currentStep = 1;
         this.formData = {};
-        this.updateStepDisplay();
+        this.showStep(1);
         this.updateProgress();
+        this.updateNavigation();
 
-        // Clear all inputs
-        const inputs = document.querySelectorAll('input');
-        inputs.forEach(input => {
+        // Clear all form fields
+        document.querySelectorAll('.form-step input').forEach(input => {
             if (input.type === 'range') {
-                input.value = 5;
-                const display = document.getElementById(input.id + 'Display');
-                if (display) display.textContent = '5';
-            } else if (input.type !== 'button' && input.type !== 'submit') {
+                input.value = 5; // Reset to middle value
+            } else {
                 input.value = '';
             }
-            input.classList.remove('invalid');
+            this.clearErrors(input);
         });
 
-        // Re-enable submit button
-        const submitBtn = document.getElementById('submitBtn');
-        if (submitBtn) {
-            submitBtn.textContent = 'Complete Entry';
-            submitBtn.disabled = false;
-        }
-    }
-
-    showActionButtons() {
-        // Create action buttons container
-        let actionsDiv = document.getElementById('postSubmitActions');
-        if (!actionsDiv) {
-            actionsDiv = document.createElement('div');
-            actionsDiv.id = 'postSubmitActions';
-            actionsDiv.className = 'post-submit-actions';
-            actionsDiv.innerHTML = `
-                <h3>What would you like to do next?</h3>
-                <div class="action-buttons">
-                    <button onclick="location.reload()" class="btn btn-secondary">
-                        Add Another Entry
-                    </button>
-                    <button onclick="window.location.href='dashboard.html'" class="btn btn-primary">
-                        View Dashboard
-                    </button>
-                </div>
-            `;
-
-            const form = document.getElementById('healthForm');
-            if (form && form.parentElement) {
-                form.parentElement.appendChild(actionsDiv);
-            }
-        } else {
-            actionsDiv.style.display = 'block';
-        }
-    }
-
-    showNotification(message, type = 'info') {
-        // Create notification element
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
-
-        // Style the notification
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 16px 24px;
-            background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-            color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 10000;
-            animation: slideIn 0.3s ease-out;
-            max-width: 400px;
-        `;
-
-        document.body.appendChild(notification);
-
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease-out';
-            setTimeout(() => {
-                if (notification.parentElement) {
-                    notification.parentElement.removeChild(notification);
-                }
-            }, 300);
-        }, 5000);
+        // Update range displays
+        document.querySelectorAll('[id$="Value"]').forEach(display => {
+            display.textContent = '5';
+        });
     }
 }
 
-// Initialize form manager when DOM is ready
+// Initialize form manager when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new FormManager();
+    if (document.getElementById('healthForm')) {
+        window.formManager = new FormManager();
+    }
 });
-
-// Add animations
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideIn {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-
-    @keyframes slideOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-    }
-
-    .post-submit-actions {
-        margin-top: 30px;
-        padding: 24px;
-        background: #f0fdf4;
-        border-radius: 12px;
-        border: 2px solid #10b981;
-        text-align: center;
-    }
-
-    .post-submit-actions h3 {
-        color: #065f46;
-        margin-bottom: 20px;
-    }
-
-    .action-buttons {
-        display: flex;
-        gap: 16px;
-        justify-content: center;
-        flex-wrap: wrap;
-    }
-
-    .action-buttons .btn {
-        padding: 12px 24px;
-        font-size: 1rem;
-        border-radius: 8px;
-        cursor: pointer;
-        border: none;
-        font-weight: 600;
-        transition: transform 0.2s;
-    }
-
-    .action-buttons .btn:hover {
-        transform: translateY(-2px);
-    }
-
-    .btn-primary {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-    }
-
-    .btn-secondary {
-        background: #6b7280;
-        color: white;
-    }
-`;
-document.head.appendChild(style);
